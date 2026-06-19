@@ -1,0 +1,8 @@
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Generated TNG catalogs (regenerate with notebook 01 on Binder); keep the README placeholders
+data/tng100/**/tng100_satellites_*.csv
+data/tng50/**/tng100_satellites_*.csv

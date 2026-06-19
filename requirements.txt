@@ -1,0 +1,15 @@
+# Core analysis (notebook 03_analysis.ipynb) — runs on a laptop or on Binder
+numpy
+scipy
+pandas
+matplotlib
+astropy
+astroquery      # SIMBAD lookup of ELVES host position angles (needs internet)
+emcee           # MCMC sinusoid fit of the quench fraction
+corner          # (optional) posterior corner plots
+
+# TNG-only extras (notebooks 01 and 02) — ONLY needed where the raw TNG100-1
+# catalogs are mounted, i.e. on the Binder instance. Not required by 03.
+#   illustris_python   # il.groupcat.loadHalos / loadSubhalos
+#   h5py               # read SKIRT morphology + StarFormationRates HDF5 files
+#   yt                 # (only if you use the yt rotation helpers)
