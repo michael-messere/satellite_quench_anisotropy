@@ -61,8 +61,18 @@ One row per selected satellite:
 | `host_m200_phys`   | log10 host M_200c, physical M_sun |
 | `host_m200_hinv`   | log10 host M_200c, h^-1 M_sun |
 | `sfr`              | instantaneous `SubhaloSFR` [M_sun/yr] |
-| `alpha`            | projected angle from host major axis, degrees in [0, 90] |
+| `alpha`            | projected angle from host major axis (x-y plane), degrees in [0, 90] |
+| `d_3d_kpc`         | physical 3D host-centric distance [kpc] |
+| `d_proj_kpc`       | physical projected (x-y) host-centric distance [kpc] |
+| `d_r200_3d`        | 3D host distance in units of R_200c |
+| `d_r200_proj`      | projected (x-y) host distance in units of R_200c |
 | `quenched`         | 1 = quenched, 0 = star-forming (see §3) |
+
+**Within-R_200c selection.** By default the catalogs keep only satellites inside **1 R_200c** of
+their host, applied in **3D** (`WITHIN_R200C = '3d'`); set it to `'proj'` for a projected cut (to
+match the observational `Rproj` selection) or `None` for FoF/Subfind membership only. The cut value
+is `R200C_FACTOR` (default 1.0). The same toggle exists in notebooks 04 and 05 (via
+`tng_utils.compute_satellite_catalog`). This mirrors the within-R_200c cut applied to SAGA/ELVES.
 
 > **Important:** the older `satellite_1e6/1e7/1e8/*.csv` files in the original `satellite_quench`
 > repo were written with an *inconsistent* mix of `/h` and no-`/h` (the two SFMS notebooks

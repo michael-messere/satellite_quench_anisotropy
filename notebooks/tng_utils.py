@@ -149,7 +149,8 @@ def _host_morph_to_satellites(sdss, first_sub, n_subs, subfind_ids, n_sub, sn_mi
     return theta, flag, sflag, sn
 
 
-def compute_satellite_catalog(tng_root, host_logm_min, host_logm_max, sim='TNG100', snap=99, sn_min=2.5):
+def compute_satellite_catalog(tng_root, host_logm_min, host_logm_max, sim='TNG100', snap=99,
+                              sn_min=2.5, within_r200c='3d', r200c_factor=1.0):
     """Per-satellite catalog for hosts with host_logm_min < log10(M200c, physical) < host_logm_max.
 
     `sim` ('TNG100' or 'TNG50') sets the box size used for the periodic wrap; `tng_root` is the
@@ -157,9 +158,17 @@ def compute_satellite_catalog(tng_root, host_logm_min, host_logm_max, sim='TNG10
     reliable g+i Sersic fits are returned; apply the satellite-mass cut in the notebook via
     `mstar_phys`.
 
+    `within_r200c` restricts to satellites inside `r200c_factor` * R_200c of their host:
+      '3d'   -> 3D separation (default; the cleaner physical selection),
+      'proj' -> projected (x-y) separation (matches the observational Rproj cut),
+      None   -> no radial cut (FoF/Subfind group membership only).
+
     Returns a DataFrame with columns:
-      host_id, host_m200_phys, host_m200_hinv, mstar_phys, mstar_hinv, sfr, alpha, quenched
-    where `alpha` is the projected angle from the host major axis folded into [0, 90].
+      host_id, host_m200_phys, host_m200_hinv, mstar_phys, mstar_hinv, sfr, alpha,
+      d_3d_kpc, d_proj_kpc, d_r200_3d, d_r200_proj, quenched
+    where `alpha` is the projected angle from the host major axis folded into [0, 90], the
+    d_*_kpc columns are the physical host-centric distance [kpc] (3D and projected onto x-y), and
+    the d_r200_* columns are that distance in units of R_200c.
     """
     import h5py
     import illustris_python as il
@@ -186,11 +195,14 @@ def compute_satellite_catalog(tng_root, host_logm_min, host_logm_max, sim='TNG10
     m200_phys_sel = host_logm200_phys[host_sel]
     m200_hinv_sel = np.log10(groups['Group_M_Crit200'][host_sel] * 1e10)   # no /h
 
+    r200_sel = groups['Group_R_Crit200'][host_sel] / H                     # host R_200c, physical kpc
+
     sat_mask = np.zeros(n_sub, dtype=bool)
     host_id_arr = np.full(n_sub, -1, dtype=int)
     host_center = np.zeros((n_sub, 3))
     host_m200_phys = np.zeros(n_sub)
     host_m200_hinv = np.zeros(n_sub)
+    host_r200 = np.zeros(n_sub)
     for k in range(len(first_sub)):
         c = first_sub[k]
         sl = slice(c + 1, c + n_subs[k])
@@ -199,6 +211,7 @@ def compute_satellite_catalog(tng_root, host_logm_min, host_logm_max, sim='TNG10
         host_center[sl] = subhalos['SubhaloCM'][c] / H
         host_m200_phys[sl] = m200_phys_sel[k]
         host_m200_hinv[sl] = m200_hinv_sel[k]
+        host_r200[sl] = r200_sel[k]
 
     # ---- host orientation + quality ----
     tg, fg, sfg, sng = _host_morph_to_satellites(sdss_g, first_sub, n_subs, subfind_ids, n_sub, sn_min)
@@ -207,18 +220,38 @@ def compute_satellite_catalog(tng_root, host_logm_min, host_logm_max, sim='TNG10
     host_good = ((fg == 0) & (sfg == 0) & (sng > sn_min) &
                  (fi == 0) & (sfi == 0) & (sni > sn_min))
 
-    # ---- projected azimuthal angle (both foldings) ----
+    # ---- projected azimuthal angle + host-centric distance ----
     rel = subhalos['SubhaloCM'] / H - host_center
     rel = rel - box_kpc * np.round(rel / box_kpc)               # periodic minimum image
     phi = np.degrees(np.arctan2(rel[:, 1], rel[:, 0]))
     alpha90, _ = fold_angles(phi, host_theta)          # [0, 90] fold (analysis is 0-90 only)
+
+    # host-centric distance: physical [kpc] and ratio d/R_200c, in 3D and projected (x-y) form.
+    z = next((v['z'] for v in REDSHIFTS.values() if v['snap'] == snap), 0.0)
+    a = 1.0 / (1.0 + z)                                    # comoving -> physical (a=1 at z=0)
+    d3d_com = np.linalg.norm(rel, axis=1)
+    dproj_com = np.hypot(rel[:, 0], rel[:, 1])
+    d_3d_kpc = d3d_com * a
+    d_proj_kpc = dproj_com * a
+    with np.errstate(invalid='ignore', divide='ignore'):
+        good_r = host_r200 > 0
+        d_r200_3d = np.where(good_r, d3d_com / host_r200, np.nan)
+        d_r200_proj = np.where(good_r, dproj_com / host_r200, np.nan)
 
     # ---- masses, SFR, quench ----
     mstar_phys = np.log10(subhalos['SubhaloMassType'][:, 4] * 1e10 / H)
     mstar_hinv = np.log10(subhalos['SubhaloMassType'][:, 4] * 1e10)
     sfr = np.asarray(subhalos['SubhaloSFR'])
 
+    # ---- optional within-R_200c selection (default: 3D) ----
     sel = sat_mask & host_good
+    if within_r200c == '3d':
+        sel &= d_r200_3d < r200c_factor
+    elif within_r200c == 'proj':
+        sel &= d_r200_proj < r200c_factor
+    elif within_r200c not in (None, 'none'):
+        raise ValueError("within_r200c must be '3d', 'proj', or None")
+
     df = pd.DataFrame({
         'host_id': host_id_arr[sel],
         'host_m200_phys': host_m200_phys[sel],
@@ -227,6 +260,10 @@ def compute_satellite_catalog(tng_root, host_logm_min, host_logm_max, sim='TNG10
         'mstar_hinv': mstar_hinv[sel],
         'sfr': sfr[sel],
         'alpha': alpha90[sel],
+        'd_3d_kpc': d_3d_kpc[sel],            # physical 3D host distance [kpc]
+        'd_proj_kpc': d_proj_kpc[sel],        # physical projected (x-y) host distance [kpc]
+        'd_r200_3d': d_r200_3d[sel],          # 3D host distance / R_200c
+        'd_r200_proj': d_r200_proj[sel],      # projected (x-y) host distance / R_200c
         'quenched': quenched_flag(mstar_phys[sel], sfr[sel]),
     })
     return df
