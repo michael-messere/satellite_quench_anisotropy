@@ -6,3 +6,6 @@ __pycache__/
 # Generated TNG catalogs (regenerate with notebook 01 on Binder); keep the README placeholders
 data/tng100/**/tng100_satellites_*.csv
 data/tng50/**/tng100_satellites_*.csv
+
+# Generated all-central catalogs (regenerate with notebooks2/01 on Binder); keep the skeleton
+data2/**/tng_satellites_*.csv
